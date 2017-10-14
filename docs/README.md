@@ -6,14 +6,18 @@
 * [React Style Guide](./react-style-guide.md)
 * [How to configure text editors and IDEs](./how-to-configure-text-editors.md)
 * [Data fetching with WHATWG Fetch](./data-fetching.md)
-* [Generate component](./generate-component.md)
-* [React-router howto](./react-router-howto.md)
-* [How to create CRUD](./crud.md)
-* [Configure and setup own server](./docs/local-server.md)
+* [Testing your application](./testing-your-application.md)
 
-### Dependency
+### Questions
 
-* [React starter kit documentation](https://github.com/kriasoft/react-starter-kit/docs/)
-* [Altjs docs](http://alt.js.org/)
-* [Passportjs docs](http://passportjs.org/)
-* [React router docs](https://github.com/reactjs/react-router/tree/latest/docs)
+* [Which module bundler should I use?](https://github.com/kriasoft/react-starter-kit/issues/3)
+* [Which Flux implementation should I use?](https://github.com/kriasoft/react-starter-kit/issues/22)
+
+### Recipes
+
+* [How to Implement Routing and Navigation](./recipes/how-to-implement-routing.md)
+* [How to Integrate Redux](./recipes/how-to-integrate-redux.md)
+* [How to Integrate React Intl](./recipes/how-to-integrate-react-intl.md)
+* [How to Integrate Disqus](./recipes/how-to-integrate-disqus.md)
+* [How to Use Sass/SCSS](./recipes/how-to-use-sass.md)
+* [How to Configure Facebook Login](./recipes/how-to-configure-facebook-login.md)

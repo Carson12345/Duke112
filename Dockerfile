@@ -1,17 +1,18 @@
-FROM node:5.10.1
+FROM node:8.6.0-alpine
 
-# Add user
-RUN useradd --user-group --create-home --shell /bin/false app
+# Set a working directory
+WORKDIR /usr/src/app
 
-ENV HOME=/home/app
+COPY ./build/package.json .
+COPY ./build/yarn.lock .
 
-COPY package.json $HOME/react/
-RUN chown -R app:app $HOME/*
+# Install Node.js dependencies
+RUN yarn install --production --no-progress
 
-USER app
+# Copy application files
+COPY ./build .
 
-WORKDIR $HOME/react
-RUN npm install
+# Run the container under "node" user by default
+USER node
 
-
-CMD ["npm", "start"]
+CMD [ "node", "server.js" ]
