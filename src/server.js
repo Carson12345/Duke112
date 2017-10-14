@@ -1,209 +1,245 @@
-/**
- * React Starter Kit (https://www.reactstarterkit.com/)
- *
- * Copyright © 2014-present Kriasoft, LLC. All rights reserved.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE.txt file in the root directory of this source tree.
- */
 
+import 'babel-polyfill';
 import path from 'path';
 import express from 'express';
-import cookieParser from 'cookie-parser';
-import bodyParser from 'body-parser';
-import expressJwt, { UnauthorizedError as Jwt401Error } from 'express-jwt';
-import expressGraphQL from 'express-graphql';
-import jwt from 'jsonwebtoken';
-import fetch from 'node-fetch';
 import React from 'react';
 import ReactDOM from 'react-dom/server';
-import PrettyError from 'pretty-error';
-import App from './components/App';
+
+import { match, RouterContext } from 'react-router';
+import routes from './routes';
+import ContextHolder from './core/ContextHolder';
+
 import Html from './components/Html';
-import { ErrorPageWithoutStyle } from './routes/error/ErrorPage';
-import errorPageStyle from './routes/error/ErrorPage.css';
-import createFetch from './createFetch';
-import passport from './passport';
-import router from './router';
-import models from './data/models';
-import schema from './data/schema';
-import assets from './assets.json'; // eslint-disable-line import/no-unresolved
-import config from './config';
+import assets from './assets';
+import {
+  crypto,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  FACEBOOK_APP_ID,
+  FACEBOOK_APP_SECRET,
+  TWITTER_CONSUMER_KEY,
+  TWITTER_CONSUMER_SECRET,
+  port,
+  hostAddress
+} from './config';
 
-const app = express();
+import alt from './core/alt';
+import Iso from 'iso';
+
+import expressSession from 'express-session';
+import cookieParser from 'cookie-parser';
+import passport from 'passport';
+import passportGoogle from 'passport-google-oauth';
+import passportFb from 'passport-facebook';
+import passportTwitter from 'passport-twitter';
+
+import UserActions from './actions/UserActions';
+
+
+// init server
+const server = global.server = express();
+
+
+// auth-cookie
+server.use(cookieParser());
+server.use(expressSession({
+  secret: crypto,
+  cookie: { secure: false },
+}));
+server.use(passport.initialize());
+server.use(passport.session());
+
 
 //
-// Tell any CSS tooling (such as Material UI) to use all vendor prefixes if the
-// user agent is not known.
-// -----------------------------------------------------------------------------
-global.navigator = global.navigator || {};
-global.navigator.userAgent = global.navigator.userAgent || 'all';
-
+// info from request user
 //
-// Register Node.js middleware
-// -----------------------------------------------------------------------------
-app.use(express.static(path.resolve(__dirname, 'public')));
-app.use(cookieParser());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+const getInfoFromUser = function setupUserInfo(user) {
+  /* eslint-disable prefer-const */
+  let info = {
+    id: user.id,
+    provider: user.provider,
+    name: user.displayName,
+    logo: '',
+    token: user.token,
+  };
+  /* eslint-enable prefer-const */
 
-//
-// Authentication
-// -----------------------------------------------------------------------------
-app.use(
-  expressJwt({
-    secret: config.auth.jwt.secret,
-    credentialsRequired: false,
-    getToken: req => req.cookies.id_token,
-  }),
-);
-// Error handler for express-jwt
-app.use((err, req, res, next) => {
-  // eslint-disable-line no-unused-vars
-  if (err instanceof Jwt401Error) {
-    console.error('[express-jwt-error]', req.cookies.id_token);
-    // `clearCookie`, otherwise user can't use web-app until cookie expires
-    res.clearCookie('id_token');
+  if (typeof user.photos !== 'undefined') {
+    info.logo = user.photos[0].value || '';
   }
-  next(err);
+
+  return info;
+};
+
+
+//
+// Passport session setup.
+//
+passport.serializeUser((user, done) => {
+  done(null, user);
 });
 
-app.use(passport.initialize());
+passport.deserializeUser((obj, done) => {
+  // TODO stirict by user_id in real apps
+  // WARNING check obj
+  done(null, obj);
+});
 
-if (__DEV__) {
-  app.enable('trust proxy');
-}
-app.get(
-  '/login/facebook',
-  passport.authenticate('facebook', {
-    scope: ['email', 'user_location'],
-    session: false,
-  }),
-);
-app.get(
-  '/login/facebook/return',
-  passport.authenticate('facebook', {
-    failureRedirect: '/login',
-    session: false,
-  }),
-  (req, res) => {
-    const expiresIn = 60 * 60 * 24 * 180; // 180 days
-    const token = jwt.sign(req.user, config.auth.jwt.secret, { expiresIn });
-    res.cookie('id_token', token, { maxAge: 1000 * expiresIn, httpOnly: true });
-    res.redirect('/');
-  },
-);
 
 //
-// Register API middleware
-// -----------------------------------------------------------------------------
-app.use(
-  '/graphql',
-  expressGraphQL(req => ({
-    schema,
-    graphiql: __DEV__,
-    rootValue: { request: req },
-    pretty: __DEV__,
-  })),
-);
+// GoogleStrategy within Passport
+//
+passport.use(new passportGoogle.OAuth2Strategy({
+  clientID: GOOGLE_CLIENT_ID,
+  clientSecret: GOOGLE_CLIENT_SECRET,
+  callbackURL: `${hostAddress}/auth/google/callback`,
+}, (accessToken, refreshToken, profile, done) => {
+  const result = Object.assign(profile, { token: accessToken });
+  return done(null, getInfoFromUser(result));
+}));
+
+
+//
+// FB within Passport
+//
+passport.use(new passportFb.Strategy({
+  clientID: FACEBOOK_APP_ID,
+  clientSecret: FACEBOOK_APP_SECRET,
+  callbackURL: `${hostAddress}/auth/fb/callback`,
+  enableProof: false,
+}, (accessToken, refreshToken, profile, done) => {
+  const result = Object.assign(profile, { token: accessToken });
+  return done(null, getInfoFromUser(result));
+}));
+
+
+//
+// Twitter within Passport
+//
+passport.use(new passportTwitter.Strategy({
+  consumerKey: TWITTER_CONSUMER_KEY,
+  consumerSecret: TWITTER_CONSUMER_SECRET,
+  callbackURL: `${hostAddress}/auth/tw/callback`,
+}, (token, tokenSecret, profile, done) => {
+  const result = Object.assign(profile, { token: `${token}||${tokenSecret}` });
+  return done(null, getInfoFromUser(result));
+}));
+
+
+//
+// place in config etc.
+// const routeToLogin = '/login';
+//
+const routeToPrivate = '/private';
+
+/**
+ * redirect users and setup cookie
+ */
+const socialUserRedirect = (req, res) => {
+  if (typeof req.user !== 'undefined') {
+    res.cookie('user', JSON.stringify(req.user));
+  }
+
+  return res.redirect(routeToPrivate);
+};
+
+
+// GET /auth/google
+server.get('/auth/google',
+  passport.authenticate('google', { scope: ['https://www.googleapis.com/auth/plus.login'] }));
+
+server.get('/auth/google/callback',
+  passport.authenticate('google'),
+  socialUserRedirect);
+
+
+// GET /auth/fb
+server.get('/auth/fb',
+  passport.authenticate('facebook'));
+
+// GET /auth/fb/callback
+server.get('/auth/fb/callback',
+  passport.authenticate('facebook'),
+  socialUserRedirect);
+
+
+// GET /auth/tw
+server.get('/auth/tw',
+  passport.authenticate('twitter'));
+
+// GET /auth/tw/callback
+server.get('/auth/tw/callback',
+  passport.authenticate('twitter'),
+  socialUserRedirect);
+
+
+//
+// close session
+//
+server.get('/logout', (req, res) => {
+  res.clearCookie('user');
+  return res.redirect('/');
+});
+
+//
+// static files
+//
+server.use(express.static(path.join(__dirname, 'public')));
 
 //
 // Register server-side rendering middleware
-// -----------------------------------------------------------------------------
-app.get('*', async (req, res, next) => {
+//
+server.get('*', async (req, res, next) => {
   try {
-    const css = new Set();
+    // auth first
+    if (req.user) {
+      UserActions.login(req.user);
+    }
 
-    // Global (context) variables that can be easily accessed from any React component
-    // https://facebook.github.io/react/docs/context.html
-    const context = {
-      // Enables critical path CSS rendering
-      // https://github.com/kriasoft/isomorphic-style-loader
-      insertCss: (...styles) => {
-        // eslint-disable-next-line no-underscore-dangle
-        styles.forEach(style => css.add(style._getCss()));
-      },
-      // Universal HTTP client
-      fetch: createFetch(fetch, {
-        baseUrl: config.api.serverUrl,
-        cookie: req.headers.cookie,
-      }),
-    };
+    // match routes
+    match({ routes, location: req.url }, (error, redirectLocation, renderProps) => {
+      if (redirectLocation !== null) {
+        return res.redirect(redirectLocation.pathname);
+      }
 
-    const route = await router.resolve({
-      ...context,
-      pathname: req.path,
-      query: req.query,
+      let statusCode = 200;
+      const data = {
+        title: '',
+        description: '',
+        css: '',
+        body: '',
+        entry: assets.main.js,
+      };
+      const css = [];
+      const context = {
+        insertCss: styles => css.push(styles._getCss()),
+        onSetTitle: value => data.title = value,
+        onSetMeta: (key, value) => data[key] = value,
+        onPageNotFound: () => statusCode = 404,
+      };
+
+      const iso = new Iso();
+      iso.add(
+        ReactDOM.renderToString(
+          <ContextHolder context={context}>
+            <RouterContext {...renderProps} />
+          </ContextHolder>
+        ),
+        alt.flush()
+      );
+
+      data.body = iso.render();
+      data.css = css.join('');
+
+      const html = ReactDOM.renderToStaticMarkup(<Html {...data} />);
+      res.status(statusCode).send(`<!doctype html>\n${html}`);
     });
-
-    if (route.redirect) {
-      res.redirect(route.status || 302, route.redirect);
-      return;
-    }
-
-    const data = { ...route };
-    data.children = ReactDOM.renderToString(
-      <App context={context}>{route.component}</App>,
-    );
-    data.styles = [{ id: 'css', cssText: [...css].join('') }];
-    data.scripts = [assets.vendor.js];
-    if (route.chunks) {
-      data.scripts.push(...route.chunks.map(chunk => assets[chunk].js));
-    }
-    data.scripts.push(assets.client.js);
-    data.app = {
-      apiUrl: config.api.clientUrl,
-    };
-
-    const html = ReactDOM.renderToStaticMarkup(<Html {...data} />);
-    res.status(route.status || 200);
-    res.send(`<!doctype html>${html}`);
   } catch (err) {
     next(err);
   }
 });
 
-//
-// Error handling
-// -----------------------------------------------------------------------------
-const pe = new PrettyError();
-pe.skipNodeFiles();
-pe.skipPackage('express');
-
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error(pe.render(err));
-  const html = ReactDOM.renderToStaticMarkup(
-    <Html
-      title="Internal Server Error"
-      description={err.message}
-      styles={[{ id: 'css', cssText: errorPageStyle._getCss() }]} // eslint-disable-line no-underscore-dangle
-    >
-      {ReactDOM.renderToString(<ErrorPageWithoutStyle error={err} />)}
-    </Html>,
-  );
-  res.status(err.status || 500);
-  res.send(`<!doctype html>${html}`);
+// Launch server
+server.listen(port, () => {
+  console.log(`The server is running at http://localhost:${port}/`);
 });
-
-//
-// Launch the server
-// -----------------------------------------------------------------------------
-const promise = models.sync().catch(err => console.error(err.stack));
-if (!module.hot) {
-  promise.then(() => {
-    app.listen(config.port, () => {
-      console.info(`The server is running at http://localhost:${config.port}/`);
-    });
-  });
-}
-
-//
-// Hot Module Replacement
-// -----------------------------------------------------------------------------
-if (module.hot) {
-  app.hot = module.hot;
-  module.hot.accept('./router');
-}
-
-export default app;

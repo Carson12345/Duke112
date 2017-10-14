@@ -1,0 +1,47 @@
+
+@import '../variables.scss';
+@import '../mixins.scss';
+
+
+.container {
+  @include clearfix;
+
+  line-height: 3rem;
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid white;
+}
+
+.brand {
+  float: left;
+  font-size: 2.3rem;
+  letter-spacing: 2px;
+  color: white;
+
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+.resourceSmall {
+  font-size: 1rem;
+}
+
+.nav {
+  float: right;
+  vertical-align: bottom;
+}
+
+.navItem {
+  color: #8CADDB;
+  font-size: 1.3rem;
+  margin-left: 2rem;
+
+  &:first-child {
+    margin-left: 0;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
